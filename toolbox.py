@@ -5,28 +5,23 @@ import glob
 from scipy import stats
 
 def starter():
-    base_path = '/home/disk/p/aodhan/'
+    """
+    The starter() function loads processed data of temperature (from GPS-RO measurements),
+    TTL cirrus cloud fraction (from CALIPSO), and zonal wind data from ERA5. Temperature and
+    cloud fraction data have 0.1 km vertical resolution from 12 to 22 km. Zonal wind data is
+    output on 100 linearly interpolated pressure levels from 50 to 350 hPa. All data has been
+    gridded to 2.5x2.5 horizontal resolution for the 15 year period from 2006-2020.
+    """
+
+    # base_path tells you where to look for the data
+    base_path = '/home/disk/p/aodhan/' 
+    
     # Pull in Temperature data
     temp_map_prof_files = glob.glob(base_path + 'cf_physical_parameters_correlations/tempmaps/TempMapsC1MAMB/*Prof*.npy')
-    temp_map_cpt_files = glob.glob(base_path + 'cf_physical_parameters_correlations/tempmaps/TempMapsC1MAMB/cpt*.npy')
     temp_map_prof_files = np.sort(temp_map_prof_files)
-    temp_map_cpt_files = np.sort(temp_map_cpt_files)
+    temp_profs = [np.load(temp_map_prof_files[yr]) for yr in range(len(temp_map_prof_files))]
 
-    # Total Cloud Fraction Data
-    total_cf_map_files_old_old = glob.glob(base_path + 'cf_physical_parameters_correlations/aerosol_cloud_distinctions/cfmaps/TTLtotalcfMonthly_strataerosolremoved_*.npy')
-    total_cf_map_files_old = []
-    for file in total_cf_map_files_old_old:
-        if len(file) == len(base_path + 'cf_physical_parameters_correlations/aerosol_cloud_distinctions/cfmaps/TTLtotalcfMonthly_strataerosolremoved_2006_06.npy'):
-            total_cf_map_files_old.append(file)
-    total_cf_map_files_ = np.sort(total_cf_map_files_old)[:-8]
-    total_cf = np.array([np.load(total_cf_map_files_[yr])[0] for yr in range(len(total_cf_map_files_))])
-    empty_tcf_map = np.empty(np.shape(total_cf[:5]))
-    empty_tcf_map[:] = np.NaN
-    total_cf = np.concatenate((empty_tcf_map, total_cf), axis=0)
-    total_cf = np.reshape(total_cf, (15,12,24,144))
-    total_cf[10,1] = np.nanmean([total_cf[10,0], total_cf[10,2]], axis=0)
-
-    # Cloud Fraction Profile Data
+    # TTL Cirrus CF data
     profile_cf_map_files_old_old = glob.glob(base_path + 'cf_physical_parameters_correlations/aerosol_cloud_distinctions/cfmaps/TTLcfMonthlyProfiles_strataerosolremoved_*.npy')
     profile_cf_map_files_old = []
     for file in profile_cf_map_files_old_old:
@@ -37,36 +32,47 @@ def starter():
     empty_prof_map = np.empty(np.shape(profile_cf[:5]))
     empty_prof_map[:] = np.NaN
     profile_cf = np.concatenate((empty_prof_map, profile_cf), axis=0)
-    profile_cf = np.reshape(profile_cf, (15,12,24,144,101))
-    profile_cf[10,1] = np.nanmean([profile_cf[10,0], profile_cf[10,2]], axis=0)
+    profile_TTLCCF = np.reshape(profile_cf, (15,12,24,144,101))
+     # average over missing CALIPSO data (feb 2016)
+    profile_TTLCCF[10,1] = np.nanmean([profile_TTLCCF[10,0], profile_TTLCCF[10,2]], axis=0)
 
-    # Large Scale Dynamics
-    mjo_index = np.load(base_path + 'large_scale_dynamics/mjo_vpm_pc2_index.npy')
-    enso_index = np.load(base_path + 'large_scale_dynamics/oni_enso_34_CDAAC.npy')
-    bdc_index = np.load(base_path + 'large_scale_dynamics/bdc_25_poleward_06_20_100hpa_meridional_heatflux_weighted.npy')
-    qbo_index = np.load(base_path + 'large_scale_dynamics/standardized_average_equatorial_zonal_wind_50hpa_2006_2020.npy')
+    # All other cloud fraction data
+    all_cf_prof_maps= glob.glob(base_path + 'cf_physical_parameters_correlations/aerosol_cloud_distinctions/cfmaps/ALLcfMonthlyProfiles_strataerosolremoved_1*.npy')
+    opaque_cf_prof_maps = glob.glob('/home/bdc/aodhan/CFmaps/TTLcfMonthlyProfiles_strataerosolremoved_*opaque.npy')
+    transparent_cf_prof_maps = glob.glob('/home/bdc/aodhan/CFmaps/TTLcfMonthlyProfiles_strataerosolremoved_*_transparent_noTTLcirrus.npy')
+    profile_ALLCF = cf_profile_finder(all_cf_prof_maps)
+    profile_TRANS = cf_profile_finder(transparent_cf_prof_maps)
+    profile_OPAQUE = cf_profile_finder(opaque_cf_prof_maps)
 
     #zonal wind
     zonal_wind = np.load('/usb/zonalwindERA5/plevel_zonal_winds.npy')
-    
-    # Create the data calendars
-    temp_profs = [np.load(temp_map_prof_files[yr]) for yr in range(len(temp_map_prof_files))]
-    cpts = [np.load(temp_map_cpt_files[yr]) for yr in range(len(temp_map_cpt_files))]
     zonal_wind = np.reshape(zonal_wind, (15,12,24,144,100))
-    return(cpts, total_cf, temp_profs, profile_cf, zonal_wind, mjo_index, enso_index, bdc_index, qbo_index)
+
+    return(temp_profs, profile_TTLCCF, profile_ALLCF, profile_TRANS, profile_OPAQUE, zonal_wind)
 
 def anomaly_finder(data_calendar):
     """ 
+    The anomaly_finder() removes the seasonal cycle from the data. 
     Data should be indexed as (years, months, lats, lons)
     """
+
     seasonal_average = np.nanmean(data_calendar, axis=0)
     anomalies_calendar = data_calendar - seasonal_average
     return anomalies_calendar
 
 def vert_temp_gradient(data_calendar):
+    """
+    The vert_temp_gradient() takes derivative with respect to height of monthly mean
+    temperature profiles. 
+    """
+
     data_calendar = np.array(data_calendar)
+
+    # create data with different start and end points
     t_1 = data_calendar[:,:,:,:,1:]
     t_2 = data_calendar[:,:,:,:,:-1]
+
+    # find derivative and average
     dt_dz = (t_1 - t_2)/0.1 # K/km
     dt_dz_1 = dt_dz[:,:,:,:,1:]
     dt_dz_2 = dt_dz[:,:,:,:,:-1]
@@ -77,43 +83,15 @@ def vert_temp_gradient(data_calendar):
     dt_dz_new = np.insert(dt_dz_new, 0, empty, axis=4)
     return(dt_dz_new)
 
-def tropical_average(data_calendar):
-    """
-    This function assumes latitudes are along axis 2
-    """
-    range_20ns = [-18.75, 16, 4, 20]
-    range_15ns = [-13.75, 12, 6, 18]
-    range_10ns = [-8.75, 8, 8, 16]
-    
-    bounds = range_10ns
-    
-    weights = np.cos(np.deg2rad(np.linspace(bounds[0], bounds[0]*-1, bounds[1])))
-    if np.ndim(data_calendar) == 4:
-        data_calendar_15ns = data_calendar[:,:,bounds[2]:bounds[3],:]
-        data_calendar_weighted = data_calendar_15ns*weights[np.newaxis, np.newaxis, :, np.newaxis]
-        shape = np.shape(data_calendar_weighted)
-        tropical_reshaped = np.reshape(data_calendar_weighted, (shape[0], shape[1], shape[2]*shape[3]))
-        tropical_mean = np.nansum(tropical_reshaped, axis=2)/(sum(weights)*144)
-    elif np.ndim(data_calendar) == 5:
-        data_calendar_15ns = data_calendar[:,:,bounds[2]:bounds[3],:,:]
-        data_calendar_weighted = data_calendar_15ns*weights[np.newaxis, np.newaxis, :, np.newaxis, np.newaxis]
-        shape = np.shape(data_calendar_weighted)
-        tropical_reshaped = np.reshape(data_calendar_weighted, (shape[0], shape[1], shape[2]*shape[3], shape[4]))
-        tropical_mean = np.nansum(tropical_reshaped, axis=2)/(sum(weights)*144)
-    return(tropical_mean)
+def cf_profile_finder(cf_prof_maps):
+    cf_prof_maps_ = np.sort(cf_prof_maps)
+    profile_cf = np.array([np.load(cf_prof_maps_[yr])[0] for yr in range(len(cf_prof_maps_))])
+    empty_prof_map = np.empty(np.shape(profile_cf[:5]))
+    empty_prof_map[:] = np.NaN
+    profile_cf = np.concatenate((empty_prof_map, profile_cf), axis=0)
+    profile_cf = np.reshape(profile_cf, (15,12,24,144,221))
+    profile_cf[10,1] = np.nanmean([profile_cf[10,0], profile_cf[10,2]], axis=0)
+    profile_cf_anoms = profile_cf - np.nanmean(profile_cf, axis=0)
+    profile_cf_anoms_zm = np.nanmean(profile_cf_anoms, axis=3)
+    return(profile_cf_anoms_zm)
 
-def regress_out(things_to_regress_out_of_ts, ts):
-    X = pd.DataFrame(things_to_regress_out_of_ts)
-    Y = ts
-    X = sm.add_constant(X) # adding a constant
-
-    lm = pg.linear_regression(X, Y, add_intercept=True, relimp=True)
-    lm.round(3)
-    
-    model = lm.coef[0]
-    for x in range(0, len(things_to_regress_out_of_ts.columns)):
-        coef_idx = x + 1
-        col = things_to_regress_out_of_ts.columns[x]
-        model = model + things_to_regress_out_of_ts[col]*lm.coef[coef_idx]
-    regressed_out_ts = Y - model
-    return(regressed_out_ts)
