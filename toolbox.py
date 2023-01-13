@@ -50,6 +50,26 @@ def starter():
 
     return(temp_profs, profile_TTLCCF, profile_ALLCF, profile_TRANS, profile_OPAQUE, zonal_wind)
 
+def cf_profile_finder(cf_prof_maps):
+    """
+    The cf_profile_finder() function loads specific cloud fraction data (other than TTL Cirrus clouds).
+    Data returned is the zonal mean cloud fraction based on cloud type (opaque, transparent, or all) 
+    on a 2.5 latitude grid from 0 to 22 km with 0.1 km spacing.
+    """
+
+    cf_prof_maps_ = np.sort(cf_prof_maps)
+    profile_cf = np.array([np.load(cf_prof_maps_[yr])[0] for yr in range(len(cf_prof_maps_))])
+    empty_prof_map = np.empty(np.shape(profile_cf[:5]))
+    empty_prof_map[:] = np.NaN
+    profile_cf = np.concatenate((empty_prof_map, profile_cf), axis=0)
+    profile_cf = np.reshape(profile_cf, (15,12,24,144,221))
+    # average over missing CALIPSO data (feb 2016)
+    profile_cf[10,1] = np.nanmean([profile_cf[10,0], profile_cf[10,2]], axis=0)
+    profile_cf_anoms = profile_cf - np.nanmean(profile_cf, axis=0)
+    profile_cf_anoms_zm = np.nanmean(profile_cf_anoms, axis=3)
+    return(profile_cf_anoms_zm)
+
+
 def anomaly_finder(data_calendar):
     """ 
     The anomaly_finder() removes the seasonal cycle from the data. 
@@ -83,15 +103,22 @@ def vert_temp_gradient(data_calendar):
     dt_dz_new = np.insert(dt_dz_new, 0, empty, axis=4)
     return(dt_dz_new)
 
-def cf_profile_finder(cf_prof_maps):
-    cf_prof_maps_ = np.sort(cf_prof_maps)
-    profile_cf = np.array([np.load(cf_prof_maps_[yr])[0] for yr in range(len(cf_prof_maps_))])
-    empty_prof_map = np.empty(np.shape(profile_cf[:5]))
-    empty_prof_map[:] = np.NaN
-    profile_cf = np.concatenate((empty_prof_map, profile_cf), axis=0)
-    profile_cf = np.reshape(profile_cf, (15,12,24,144,221))
-    profile_cf[10,1] = np.nanmean([profile_cf[10,0], profile_cf[10,2]], axis=0)
-    profile_cf_anoms = profile_cf - np.nanmean(profile_cf, axis=0)
-    profile_cf_anoms_zm = np.nanmean(profile_cf_anoms, axis=3)
-    return(profile_cf_anoms_zm)
+def get_eq_mean(calendar):
+    """
+    get_eq_mean() takes the mean from 10S-10N over an array given that the data's 
+    latitude axis is axis=1 and that the data is spaced from 30S-30N with 2.5 lat spacing
+    """
+
+    eq_mean_calendar = np.nanmean(calendar[:,8:16,:], axis=1)    
+    return(eq_mean_calendar)
+
+def alt2pres(altitude):
+    H = 7 
+    press = 1000*np.exp(-1*(altitude/H))
+    return press
+
+def press2alt(press):
+    H = 7 
+    altitude = -1*H*np.log(press/1000)
+    return altitude
 
