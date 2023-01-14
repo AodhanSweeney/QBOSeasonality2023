@@ -122,3 +122,149 @@ def press2alt(press):
     altitude = -1*H*np.log(press/1000)
     return altitude
 
+def season_finder_profiles(calendar, m1, m2, m3,):
+    """ 
+    Data should be indexed as (years, months)
+    """
+    total_djf_anoms_list = [calendar[:,m1], calendar[:,m2], 
+                            calendar[:,m3]]
+    total_djf_anoms = np.swapaxes(total_djf_anoms_list, 0,1)
+    shape = np.shape(total_djf_anoms)
+    total_djf_timeseries = np.reshape(total_djf_anoms, (shape[0]*shape[1],shape[2], shape[3]))
+    return(total_djf_timeseries)
+
+def season_finder(calendar, m1, m2, m3):
+    """ 
+    Data should be indexed as (years, months)
+    """
+    total_djf_anoms_list = [calendar[:,m1], calendar[:,m2], 
+                            calendar[:,m3]]
+    total_djf_anoms = np.swapaxes(total_djf_anoms_list, 0,1)
+    shape = np.shape(total_djf_anoms)
+    total_djf_timeseries = np.reshape(total_djf_anoms, (shape[0]*shape[1]))
+    return(total_djf_timeseries)
+
+def regression_ts(pc, tmap):    
+    x_indices = np.shape(tmap)[1]
+    y_indices = np.shape(tmap)[2]
+    r_map = []
+    for x in range(x_indices):
+        r_x = []
+        for y in range(y_indices):
+            temp_series = tmap[:,x,y]
+            temp_series_no_nan = temp_series[~np.isnan(temp_series)]
+            pc_no_nan = pc[~np.isnan(temp_series)]
+            try:
+                reg = stats.linregress(pc_no_nan, temp_series_no_nan)
+                reg_ts = reg[1] + reg[0]*pc
+            except:
+                reg_ts = np.repeat(np.NaN, len(temp_series))
+            r_x.append(reg_ts)
+        r_map.append(r_x)
+    r_map = np.transpose(r_map)
+    return(np.swapaxes(r_map, 1,2))
+
+def cpt_alt_finder(temp_profs):
+    calendar = []
+    for yr in range(15):
+        year_map = []
+        for mon in range(12):
+            month_map = []
+            for lat in range(24):
+                lat_line = []
+                for lon in range(144):
+                    try:
+                        cpt_alt = np.nanargmin(temp_profs[yr,mon,lat,lon])/10 + 12
+                    except:
+                        cpt_alt = np.NaN
+                    lat_line.append(cpt_alt)
+                month_map.append(lat_line)
+            year_map.append(month_map)
+        calendar.append(year_map)
+    calendar = np.array(calendar)
+    return(calendar)
+
+def difference_and_significance_map(qbo_season, variable_eq_season):
+    w_variable_season = variable_eq_season[qbo_season > .5]
+    e_variable_season = variable_eq_season[qbo_season < -.5]
+    w_m_e_season = np.nanmean(w_variable_season, axis=0) - np.nanmean(e_variable_season, axis=0)
+    w_season = np.nanmean(w_variable_season, axis=0)
+    e_season = np.nanmean(e_variable_season, axis=0)
+    difference_distribution = []
+    w_distribution = []
+    e_distribution = []
+    for boot_strap_idx in range(1000):
+        rand_indices_w = np.random.randint(low=0, high=len(w_variable_season), size=len(w_variable_season))
+        random_w_cf_seasons = w_variable_season[rand_indices_w]
+        w_distribution.append(np.nanmean(random_w_cf_seasons, axis=0))
+        rand_indices_e = np.random.randint(low=0, high=len(e_variable_season), size=len(e_variable_season))
+        random_e_cf_seasons = e_variable_season[rand_indices_e]
+        e_distribution.append(np.nanmean(random_e_cf_seasons, axis=0))
+        random_difference = np.nanmean(random_w_cf_seasons, axis=0) - np.nanmean(random_e_cf_seasons, axis=0)
+        difference_distribution.append(random_difference)
+    two_sigma_significance = np.nanstd(difference_distribution, axis=0)*2
+    two_sigma_w_significance = np.nanstd(w_distribution, axis=0)*2
+    two_sigma_e_significance = np.nanstd(e_distribution, axis=0)*2
+    return(w_m_e_season, two_sigma_significance, w_season, 
+           two_sigma_w_significance, e_season, two_sigma_e_significance)
+
+def three_month_smoother(temp_profile_anoms_cal_west):    
+        
+    smoothed_west_anoms_DJF = [temp_profile_anoms_cal_west[:,11], temp_profile_anoms_cal_west[:,0], temp_profile_anoms_cal_west[:,1]]
+    smoothed_west_anoms_JFM = [temp_profile_anoms_cal_west[:,0], temp_profile_anoms_cal_west[:,1], temp_profile_anoms_cal_west[:,2]]
+    smoothed_west_anoms_FMA = [temp_profile_anoms_cal_west[:,1], temp_profile_anoms_cal_west[:,2], temp_profile_anoms_cal_west[:,3]]
+    smoothed_west_anoms_MAM = [temp_profile_anoms_cal_west[:,2], temp_profile_anoms_cal_west[:,3], temp_profile_anoms_cal_west[:,4]]
+    smoothed_west_anoms_AMJ = [temp_profile_anoms_cal_west[:,3], temp_profile_anoms_cal_west[:,4], temp_profile_anoms_cal_west[:,5]]
+    smoothed_west_anoms_MJJ = [temp_profile_anoms_cal_west[:,4], temp_profile_anoms_cal_west[:,5], temp_profile_anoms_cal_west[:,6]]
+    smoothed_west_anoms_JJA = [temp_profile_anoms_cal_west[:,5], temp_profile_anoms_cal_west[:,6], temp_profile_anoms_cal_west[:,7]]
+    smoothed_west_anoms_JAS = [temp_profile_anoms_cal_west[:,6], temp_profile_anoms_cal_west[:,7], temp_profile_anoms_cal_west[:,8]]
+    smoothed_west_anoms_ASO = [temp_profile_anoms_cal_west[:,7], temp_profile_anoms_cal_west[:,8], temp_profile_anoms_cal_west[:,9]]
+    smoothed_west_anoms_SON = [temp_profile_anoms_cal_west[:,8], temp_profile_anoms_cal_west[:,9], temp_profile_anoms_cal_west[:,10]]
+    smoothed_west_anoms_OND = [temp_profile_anoms_cal_west[:,9], temp_profile_anoms_cal_west[:,10], temp_profile_anoms_cal_west[:,11]]
+    smoothed_west_anoms_NDJ = [temp_profile_anoms_cal_west[:,10], temp_profile_anoms_cal_west[:,11], temp_profile_anoms_cal_west[:,0]]
+
+    smoothed_temp_profile_anoms_cal_west = [smoothed_west_anoms_DJF, smoothed_west_anoms_JFM,
+                                            smoothed_west_anoms_FMA, smoothed_west_anoms_MAM,
+                                            smoothed_west_anoms_AMJ, smoothed_west_anoms_MJJ,
+                                            smoothed_west_anoms_JJA, smoothed_west_anoms_JAS,
+                                            smoothed_west_anoms_ASO, smoothed_west_anoms_SON,
+                                            smoothed_west_anoms_OND, smoothed_west_anoms_NDJ]
+    
+    smoothed_temp_profile_anoms_cal_west_ = np.nanmean(smoothed_temp_profile_anoms_cal_west, axis=1)
+    smoothed_temp_profile_anoms_cal_west_ = np.nanmean(smoothed_temp_profile_anoms_cal_west_, axis=1)
+    smoothed_temp_profile_anoms_cal_west_ = np.insert(smoothed_temp_profile_anoms_cal_west_, 12, smoothed_temp_profile_anoms_cal_west_[0])
+    return(smoothed_temp_profile_anoms_cal_west_)
+
+def lead_impact_finder(qbo_file, data_calendar):
+    enso_index = np.load('/home/disk/p/aodhan/large_scale_dynamics/Monthly_ERSSTv5_Niño_3p4_1979_2020.npy')[-180:]
+    data_roladex = []
+    seasons = [[11,0,1], [0,1,2], [1,2,3], [2,3,4], [3,4,5], [4,5,6], [5,6,7],
+                [6,7,8], [7,8,9], [8,9,10], [9,10,11], [10,11,0]]
+    for lead in range(5):
+        lead_data = []
+        if lead == 0:
+            qbo_index = np.load(qbo_file)
+            qbo = qbo_index - np.nanmean(qbo_index)
+            qbo_index = qbo/np.nanstd(qbo)
+            qbo_index = qbo_index[-180:]
+        else:
+            start = -180 - lead
+            end = -1*lead
+            qbo_index = np.load(qbo_file)
+            qbo = qbo_index - np.nanmean(qbo_index)
+            qbo_index = qbo/np.nanstd(qbo)
+            qbo_index = qbo_index[start:end]
+        for season in seasons:
+            data_season = season_finder_profiles(data_calendar, season[0], season[1], season[2])[:]
+            qbo_season = season_finder(np.reshape(qbo_index, (15,12)), season[0], season[1], season[2])[:]
+            ###################### Remove ENSO 3.4 signal ########################################
+            enso_season = season_finder(np.reshape(enso_index, (15,12)), season[0], season[1], season[2])
+            data_season = data_season - regression_ts(enso_season, data_season)
+            ####################################################################################
+            data_eq_season = get_eq_mean(data_season)
+            data_WmE_composite = difference_and_significance_map(qbo_season, data_eq_season)
+            lead_data.append(data_WmE_composite)
+        data_roladex.append(lead_data)
+    
+    data_roladex = np.array(data_roladex)
+    return data_roladex
