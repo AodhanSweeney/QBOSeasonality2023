@@ -5,47 +5,39 @@ import glob
 from scipy import stats
 
 def starter():
-    """
-    The starter() function loads processed data of temperature (from GPS-RO measurements),
-    TTL cirrus cloud fraction (from CALIPSO), and zonal wind data from ERA5. Temperature and
-    cloud fraction data have 0.1 km vertical resolution from 12 to 22 km. Zonal wind data is
-    output on 100 linearly interpolated pressure levels from 50 to 350 hPa. All data has been
-    gridded to 2.5x2.5 horizontal resolution for the 15 year period from 2006-2020.
-    """
-
     # base_path tells you where to look for the data
     base_path = '/home/disk/p/aodhan/' 
-    
+
     # Pull in Temperature data
-    temp_map_prof_files = glob.glob(base_path + 'cf_physical_parameters_correlations/tempmaps/TempMapsC1MAMB/*Prof*.npy')
+    temp_map_prof_files = glob.glob(base_path + 'cf_physical_parameters_correlations/QBOSeasonality2023/data/GPSROTempData/*Prof*.npy')
     temp_map_prof_files = np.sort(temp_map_prof_files)
     temp_profs = [np.load(temp_map_prof_files[yr]) for yr in range(len(temp_map_prof_files))]
 
     # TTL Cirrus CF data
-    profile_cf_map_files_old_old = glob.glob(base_path + 'cf_physical_parameters_correlations/aerosol_cloud_distinctions/cfmaps/TTLcfMonthlyProfiles_strataerosolremoved_*.npy')
+    profile_cf_map_files_old_old = glob.glob(base_path + 'cf_physical_parameters_correlations/QBOSeasonality2023/data/TTLCirrusCFData/TTLcfMonthlyProfiles_strataerosolremoved_*.npy')
     profile_cf_map_files_old = []
     for file in profile_cf_map_files_old_old:
-        if len(file) == len(base_path + 'cf_physical_parameters_correlations/aerosol_cloud_distinctions/cfmaps/TTLcfMonthlyProfiles_strataerosolremoved_2006_06.npy'):
+        if len(file) == len(base_path + 'cf_physical_parameters_correlations/QBOSeasonality2023/data/TTLCirrusCFData/TTLcfMonthlyProfiles_strataerosolremoved_2006_06.npy'):
             profile_cf_map_files_old.append(file)
-    profile_cf_map_files_ = np.sort(profile_cf_map_files_old)[:-8]
+    profile_cf_map_files_ = np.sort(profile_cf_map_files_old)[:-12]
     profile_cf = np.array([np.load(profile_cf_map_files_[yr])[0] for yr in range(len(profile_cf_map_files_))])
     empty_prof_map = np.empty(np.shape(profile_cf[:5]))
     empty_prof_map[:] = np.NaN
     profile_cf = np.concatenate((empty_prof_map, profile_cf), axis=0)
     profile_TTLCCF = np.reshape(profile_cf, (15,12,24,144,101))
-     # average over missing CALIPSO data (feb 2016)
+    # average over missing CALIPSO data (feb 2016)
     profile_TTLCCF[10,1] = np.nanmean([profile_TTLCCF[10,0], profile_TTLCCF[10,2]], axis=0)
 
     # All other cloud fraction data
-    all_cf_prof_maps= glob.glob(base_path + 'cf_physical_parameters_correlations/aerosol_cloud_distinctions/cfmaps/ALLcfMonthlyProfiles_strataerosolremoved_1*.npy')
-    opaque_cf_prof_maps = glob.glob('/home/bdc/aodhan/CFmaps/TTLcfMonthlyProfiles_strataerosolremoved_*opaque.npy')
-    transparent_cf_prof_maps = glob.glob('/home/bdc/aodhan/CFmaps/TTLcfMonthlyProfiles_strataerosolremoved_*_transparent_noTTLcirrus.npy')
+    all_cf_prof_maps = np.sort(glob.glob(base_path + 'cf_physical_parameters_correlations/QBOSeasonality2023/data/ALLCFData/ALLcfMonthlyProfiles_strataerosolremoved_1*.npy'))[:-12]
+    opaque_cf_prof_maps = np.sort(glob.glob(base_path + 'cf_physical_parameters_correlations/QBOSeasonality2023/data/OpaqueCFData/TTLcfMonthlyProfiles_strataerosolremoved_*opaque.npy'))
+    transparent_cf_prof_maps = np.sort(glob.glob(base_path + 'cf_physical_parameters_correlations/QBOSeasonality2023/data/OtherCirrusCFData/TTLcfMonthlyProfiles_strataerosolremoved_*_transparent_noTTLcirrus.npy'))
     profile_ALLCF = cf_profile_finder(all_cf_prof_maps)
     profile_TRANS = cf_profile_finder(transparent_cf_prof_maps)
     profile_OPAQUE = cf_profile_finder(opaque_cf_prof_maps)
 
     #zonal wind
-    zonal_wind = np.load('/usb/zonalwindERA5/plevel_zonal_winds.npy')
+    zonal_wind = np.load(base_path + '/cf_physical_parameters_correlations/QBOSeasonality2023/data/ZonalWindData/plevel_zonal_winds.npy')
     zonal_wind = np.reshape(zonal_wind, (15,12,24,144,100))
 
     return(temp_profs, profile_TTLCCF, profile_ALLCF, profile_TRANS, profile_OPAQUE, zonal_wind)
@@ -113,11 +105,13 @@ def get_eq_mean(calendar):
     return(eq_mean_calendar)
 
 def alt2pres(altitude):
+    """ switches from altitude to pressure assuming scale height of 7 km"""
     H = 7 
     press = 1000*np.exp(-1*(altitude/H))
     return press
 
 def press2alt(press):
+    """ switches from pressure to altitude assuming scale height of 7 km"""
     H = 7 
     altitude = -1*H*np.log(press/1000)
     return altitude
@@ -236,7 +230,7 @@ def three_month_smoother(temp_profile_anoms_cal_west):
     return(smoothed_temp_profile_anoms_cal_west_)
 
 def lead_impact_finder(qbo_file, data_calendar):
-    enso_index = np.load('/home/disk/p/aodhan/large_scale_dynamics/Monthly_ERSSTv5_Niño_3p4_1979_2020.npy')[-180:]
+    enso_index = np.load('/home/disk/p/aodhan/cf_physical_parameters_correlations/QBOSeasonality2023/data/Monthly_ERSSTv5_Niño_3p4_1979_2020.npy')[-180:]
     data_roladex = []
     seasons = [[11,0,1], [0,1,2], [1,2,3], [2,3,4], [3,4,5], [4,5,6], [5,6,7],
                 [6,7,8], [7,8,9], [8,9,10], [9,10,11], [10,11,0]]
